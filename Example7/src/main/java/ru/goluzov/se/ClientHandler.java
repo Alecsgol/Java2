@@ -2,6 +2,8 @@ package ru.goluzov.se;
 
 import java.io.IOException;
 import java.net.Socket;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ClientHandler {
     private Server server;
@@ -15,7 +17,7 @@ public class ClientHandler {
 
         try {
             channel = ChannelBase.of(socket);
-            new Thread(() -> {
+            Server.getExecutorService().execute(() -> {
                 auth();
                 System.out.println(nick + " handler waiting for new massages");
                 while (socket.isConnected()) {
@@ -30,18 +32,28 @@ public class ClientHandler {
                             break;
                         case BROADCAST_CHAT:
                             server.sendBroadcastMessage(nick + " : " + msg.getBody());
+                            break;
+                        case ClientHandler:
+                            Pattern pattern = Pattern.compile("[^\\s]{1,15}");
+                            Matcher matcher = pattern.matcher(msg.getBody());
+                            if (matcher.find()) {
+                                if (server.getAuthService().changeNick(this.nick, matcher.group(0))) {
+                                    this.nick = matcher.group(0);
+                                    channel.sendMessage("Ваш ник успешно изменён на " +
+                                            matcher.group(0) + ".");
+                                }else
+                                    channel.sendMessage("Не удалось сменит ник. " +
+                                            "Возможно такой ник уже занят");
+                            }
+                            break;
                         default:
                             System.out.println("invalid message type");
                     }
                 }
-            }).start();
+            });
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    public ClientHandler(Socket socket) {
-
     }
 
     private void sendPrivateMessage(String messageWithNickTo) {
@@ -61,7 +73,7 @@ public class ClientHandler {
             if (!channel.hasNextLine()) break;
             Message message = channel.getMessage();
             if (MessageType.AUTH_MESSAGE.equals(message.getType())) {
-                String[] commands = message.getBody().split(" ");// /login1 pass1
+                String[] commands = message.getBody().split(" ");// /auth login1 pass1
                 if (commands.length >= 2) {
                     String login = commands[0];
                     String password = commands[1];
@@ -106,8 +118,5 @@ public class ClientHandler {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    public void run(ClientHandler clientHandler) {
     }
 }
